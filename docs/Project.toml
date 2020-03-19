@@ -1,0 +1,6 @@
+[deps]
+DiskArrayTools = "fcd2136c-9f69-4db6-97e5-f31981721d63"
+Documenter = "e30172f5-a6a5-5a46-863b-614d45cd2de4"
+
+[compat]
+Documenter = "~0.24"

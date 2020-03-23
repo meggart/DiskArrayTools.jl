@@ -1,7 +1,12 @@
 module DiskArrayTools
-import DiskArrays: AbstractDiskArray, eachchunk, haschunks, Chunked, estimate_chunksize, GridChunks, findints, readblock!, writeblock!
+import DiskArrays: AbstractDiskArray, eachchunk, haschunks, Chunked,
+estimate_chunksize, GridChunks, findints, readblock!, writeblock!
+using Interpolations
+using Base.Iterators: product
+using OffsetArrays: OffsetArray
 
-export DiskArraySTack, diskstack
+
+export DiskArrayStack, diskstack
 struct DiskArrayStack{T,N,M,NO}<:AbstractDiskArray{T,N}
     arrays::Array{M,NO}
 end
@@ -16,10 +21,10 @@ function eachchunk(a::DiskArrayStack{<:Any,<:Any,<:Any,NO}) where NO
     iterold = eachchunk(a.arrays[1])
     cs = (iterold.chunksize...,ntuple(one,NO)...)
     co = (iterold.offset...,ntuple(zero,NO)...)
-    DiskArrays.GridChunks(a,cs,offset=co)
+    GridChunks(a,cs,offset=co)
 end
 
-function DiskArrays.readblock!(a::DiskArrayStack{<:Any,N,<:Any,NO},aout,i::AbstractVector...) where {N,NO}
+function readblock!(a::DiskArrayStack{<:Any,N,<:Any,NO},aout,i::AbstractVector...) where {N,NO}
 
   innerinds = i[1:(N-NO)]
 
@@ -38,7 +43,7 @@ function DiskArrays.readblock!(a::DiskArrayStack{<:Any,N,<:Any,NO},aout,i::Abstr
   nothing
 end
 
-function DiskArrays.writeblock!(a::DiskArrayStack{<:Any,N,<:Any,NO},v,i::AbstractVector...) where {N,NO}
+function writeblock!(a::DiskArrayStack{<:Any,N,<:Any,NO},v,i::AbstractVector...) where {N,NO}
   innerinds = i[1:(N-NO)]
 
   outerinds = i[(N-NO+1):N]
@@ -68,18 +73,20 @@ function Base.view(a::DiskArrayStack{<:Any,N,<:Any,NO},i...) where {N,NO}
     end
 end
 
-using DiskArrays: AbstractDiskArray, writeblock!, toRanges, DiskArrays, GridChunks
-import DiskArrays: readblock!, haschunks, eachchunk
-using Interpolations
-using Base.Iterators: product
-using OffsetArrays: OffsetArray
-struct InterpolatedDiskArray{T,N,A<:AbstractArray{T,N},I,O,BC,CS<:Union{Nothing,NTuple{N,Int}}} <: AbstractDiskArray{T,N}
+abstract type ResampledDiskArray{T,N} <: AbstractDiskArray{T,N} end
+get_readinds(a::ResampledDiskArray, r) = error("get_readinds not implemented for $(typeof(a))")
+
+
+
+struct InterpolatedDiskArray{T,N,A<:AbstractArray{T,N},I,O,BC,CS<:Union{Nothing,NTuple{N,Int}}} <: ResampledDiskArray{T,N}
     a::A
     newinds::I
     meth::O
     bc::BC
     chunksize::CS
 end
+get_readinds(a::InterpolatedDiskArray,r) = round_readinds.(size(a.a),r)
+
 allmeths(order::Tuple,newinds) = map(order,newinds) do o,ni
     ni === nothing ? NoInterp() : BSpline(o)
 end
@@ -101,7 +108,14 @@ Base.size(a::InterpolatedDiskArray) = map(length,a.newinds)
 haschunks(a::InterpolatedDiskArray) = a.chunksize===nothing
 eachchunk(a::InterpolatedDiskArray) = GridChunks(a,a.chunksize)
 
-
+function resample_disk(a::InterpolatedDiskArray,aout,atemp,parentranges)
+  meth = map((s,m)->s==1 ? NoInterp() : m,size(atemp),a.meth)
+  if all(isequal(NoInterp()),meth)
+      aout .= atemp.parent
+  else
+      fremap(aout,atemp,parentranges,meth,bc=a.bc)
+  end
+end
 
 function fremap(xout,xin,newinds,ipmeth;bc = Flat())
   interp = extrapolate(interpolate(xin, ipmeth), bc)
@@ -109,17 +123,12 @@ function fremap(xout,xin,newinds,ipmeth;bc = Flat())
     xout[i]=interp(ic...)
   end
 end
-function readblock!(a::InterpolatedDiskArray, aout, i::AbstractUnitRange...)
+function readblock!(a::ResampledDiskArray, aout, i::AbstractUnitRange...)
     parentranges = map((ir,ip)->ip[ir],i,a.newinds)
-    rr = round_readinds.(size(a.a),parentranges)
+    rr = get_readinds(a,parentranges)
     atemp = a.a[rr...]
-    meth = map((s,m)->s==1 ? NoInterp() : m,size(atemp),a.meth)
     atemp2 = OffsetArray(atemp,map(r->(first(r)-1),rr))
-    if all(isequal(NoInterp()),meth)
-        aout .= atemp
-    else
-        fremap(aout,atemp2,parentranges,rr,meth,bc=a.bc)
-    end
+    resample_disk(a,aout,atemp2,parentranges)
 end
 
 

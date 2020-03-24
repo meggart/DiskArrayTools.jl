@@ -78,14 +78,33 @@ get_readinds(a::ResampledDiskArray, r) = error("get_readinds not implemented for
 
 
 
-struct InterpolatedDiskArray{T,N,A<:AbstractArray{T,N},I,O,BC,CS<:Union{Nothing,NTuple{N,Int}}} <: ResampledDiskArray{T,N}
+struct InterpolatedDiskArray{T,N,A<:AbstractArray{T,N},I,O,BC,CS<:Union{Nothing,GridChunks{N}}} <: ResampledDiskArray{T,N}
     a::A
     newinds::I
     meth::O
     bc::BC
     chunksize::CS
 end
-get_readinds(a::InterpolatedDiskArray,r) = round_readinds.(size(a.a),r)
+fixin(i,s) = max(1,min(s,i))
+function round_readinds(s,r,an)
+  mi,ma = extrema(r)
+  if mi == ma
+    m = fixin(round(Int,mi),s)
+    m:m
+  else
+    a = if an
+      (round(Int,mi,RoundNearestTiesUp), -round(Int,-ma,RoundNearestTiesUp))
+    else
+      (floor(Int,mi),ceil(Int,ma))
+    end
+    fixin(a[1],s):fixin(a[2],s)
+  end
+end
+
+function get_readinds(a::InterpolatedDiskArray,r)
+  allnearest = all(i->isa(i,Union{Nothing,BSpline{Constant}}),a.meth)
+  round_readinds.(size(a.a),r,allnearest)
+end
 
 allmeths(order::Tuple,newinds) = map(order,newinds) do o,ni
     ni === nothing ? NoInterp() : BSpline(o)
@@ -103,10 +122,10 @@ function InterpolatedDiskArray(a::AbstractArray,chunksize,newinds...; order=Line
     me = allmeths(order,newinds)
     InterpolatedDiskArray(a,ni2,me,bc,chunksize)
 end
-round_readinds(s,r) = max(1,floor(Int,first(r))):min(s,ceil(Int,last(r)))
 Base.size(a::InterpolatedDiskArray) = map(length,a.newinds)
-haschunks(a::InterpolatedDiskArray) = a.chunksize===nothing
-eachchunk(a::InterpolatedDiskArray) = GridChunks(a,a.chunksize)
+haschunks(a::InterpolatedDiskArray{<:Any,<:Any,<:Any,<:Any,<:Any,<:Any,<:GridChunks}) = true
+haschunks(a::InterpolatedDiskArray{<:Any,<:Any,<:Any,<:Any,<:Any,<:Any,Nothing}) = false
+eachchunk(a::InterpolatedDiskArray{<:Any,<:Any,<:Any,<:Any,<:Any,<:Any,<:GridChunks}) = a.chunksize
 
 function resample_disk(a::InterpolatedDiskArray,aout,atemp,parentranges)
   meth = map((s,m)->s==1 ? NoInterp() : m,size(atemp),a.meth)

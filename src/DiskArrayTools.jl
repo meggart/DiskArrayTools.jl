@@ -55,7 +55,7 @@ function writeblock!(a::DiskArrayStack{<:Any,N,<:Any,NO},v,i::AbstractVector...)
     if isa(arnow, AbstractDiskArray)
       writeblock!(a.arrays[iouter],view(v,innercolon...,iret.I...),innerinds...)
     else
-      arnow[innerinds...] = aout[innercolon...,iret.I...]
+      arnow[innerinds...] = v[innercolon...,iret.I...]
     end
   end
   nothing
@@ -149,6 +149,47 @@ function readblock!(a::ResampledDiskArray, aout, i::AbstractUnitRange...)
     atemp2 = OffsetArray(atemp,map(r->(first(r)-1),rr))
     resample_disk(a,aout,atemp2,parentranges)
 end
+
+
+#Use of Sentinel missing value
+struct CFDiskArray{T,N,ST,P<:AbstractArray{ST,N}} <: AbstractDiskArray{Union{T,Missing},N}
+    a::P
+    mv::ST
+    add_offset::T
+    scale_factor::T
+end
+function CFDiskArray(a::AbstractArray{T}, attr::Dict) where T
+  mv = get(attr,"missing_value",get(attr,"_FillValue",typemax(T)))
+  offs,sc = if haskey(attr,"add_offset") || haskey(attr,"scale_factor")
+    offs = get(attr,"add_offset",zero(Float16))
+    sc = get(attr,"scale_factor",one(Float16))
+    promote(offs,sc)
+  else
+    zero(T), one(T)
+  end
+  CFDiskArray(a, mv, offs, sc)
+end
+
+Base.size(a::CFDiskArray, args...) = size(a.a, args...)
+haschunks(a::CFDiskArray) = haschunks(a.a)
+eachchunk(a::CFDiskArray) = eachchunk(a.a)
+iscompressed(a::CFDiskArray) = iscompressed(a.a)
+
+function readblock!(a::CFDiskArray, aout, r::AbstractVector...)
+    mv = a.mv
+    sc,offs = a.scale_factor, a.add_offset
+    map!(j->scaleoffs(j,mv,sc,offs), aout, a.a)
+    nothing
+end
+scaleoffs(x,mv,sc,offs) = x==mv ? missing : x*sc+offs
+function writeblock!(a::CFDiskArray, v, r::AbstractVector...)
+    mv = a.mv
+    sc,offs = a.scale_factor, a.add_offset
+    map!(j->scaleoffsinv(j,mv,sc,offs), a.a, v)
+    nothing
+end
+scaleoffsinv(x,mv::Integer,sc,offs) = ismissing(x) ? mv : round(typeof(mv),(x-offs)/sc)
+scaleoffsinv(x,mv,sc,offs) = ismissing(x) ? mv : ((x-offs)/sc)
 
 
 end # module

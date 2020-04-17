@@ -116,7 +116,7 @@ function allmeths(order, newinds)
     allmeths(allorders,newinds)
 end
 function InterpolatedDiskArray(a::AbstractArray,chunksize,newinds...; order=Linear(), bc=Flat())
-    eltype(a) <: Union{Real,Complex} || error("Can only interpolate real or complex values")
+    eltype(a) <: Union{Missing,Real,Complex} || error("Can only interpolate real or complex values")
     s = size(a)
     ni2 = map((s,i)->i===nothing ? (1:s) : i,s,newinds)
     me = allmeths(order,newinds)

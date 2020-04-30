@@ -6,7 +6,7 @@ using Base.Iterators: product
 using OffsetArrays: OffsetArray
 
 
-export DiskArrayStack, diskstack
+export DiskArrayStack, diskstack, ConcatDiskArray
 struct DiskArrayStack{T,N,M,NO}<:AbstractDiskArray{T,N}
     arrays::Array{M,NO}
 end
@@ -191,5 +191,75 @@ end
 scaleoffsinv(x,mv::Integer,sc,offs) = ismissing(x) ? mv : round(typeof(mv),(x-offs)/sc)
 scaleoffsinv(x,mv,sc,offs) = ismissing(x) ? mv : ((x-offs)/sc)
 
+
+struct ConcatDiskArray{T,N,P} <: AbstractDiskArray{T,N}
+    parents::P
+    startinds::NTuple{N,Vector{Int}}
+    size::NTuple{N,Int}
+end
+
+function ConcatDiskArray(arrays::AbstractArray)
+    #First do some consistency checks
+    arrinfo = map(arrays) do a
+        eltype(a), size(a)
+    end
+    et = first(arrinfo)[1]
+    nd = length(first(arrinfo)[2])
+    sa = size.(arrays)
+    all(i->i[1]==et,arrinfo) || error("Arrays don't have the same element type")
+    all(i->length(i[2])==nd, arrinfo) || error("Arrays don't have the same dimensions")
+    if ndims(arrays)<nd
+        arrays = reshape(arrays,size(arrays)...,ones(Int,nd-ndims(arrays))...)
+    end
+    function othersize(x,id)
+        (x[1:id-1]..., x[id+1:end]...)
+    end
+    si = map(1:nd) do id
+        otherdims = ((1:id-1)...,(id+1:nd)...)
+        a = size.(arrays)
+        a = reduce(a, dims=id, init=ntuple(zero,nd)) do i,j
+                if all(iszero,i)
+                    j
+                elseif othersize(i,id)==othersize(j,id)
+                    j
+                else
+                    error("Dimensions don't match")
+                end
+        end
+        I = fill!(Array{Union{Int,Colon},1}(undef,nd),1)
+        I[id] = Colon()
+        ar = sa[I...]
+        ari = map(i->i[id],ar)
+        sl = sum(ari)
+        r = cumsum(ari)
+        pop!(pushfirst!(r,0))
+        r.+1, sl
+    end
+    ConcatDiskArray{et,nd,typeof(arrays)}(arrays, (getindex.(si,1)...,),(getindex.(si,2)...,))
+end
+
+Base.size(a::ConcatDiskArray) = a.size
+
+import DiskArrays: readblock!, writeblock!
+using OffsetArrays: OffsetArray
+function readblock!(a::ConcatDiskArray, aout, inds::AbstractUnitRange...)
+    #Find affected blocks and indices in blocks
+    blockinds  = map(inds, a.startinds, size(a.parents)) do i, si, s
+        bi1 = max(searchsortedlast(si,first(i)),1)
+        bi2 = min(searchsortedfirst(si,last(i)+1)-1,s)
+        bi1:bi2
+    end
+    map(CartesianIndices(blockinds)) do cI
+        myar = a.parents[cI]
+        mysize = size(myar)
+        array_range = map(cI.I, a.startinds, mysize, inds) do ii, si, ms, indstoread
+            max(first(indstoread)-si[ii]+1,1) : min(last(indstoread)-si[ii]+1, ms)
+        end
+        outer_range = map(cI.I, a.startinds, array_range, inds) do ii, si, ar, indstoread
+            (first(ar)+si[ii]-first(indstoread)):(last(ar)+si[ii]-first(indstoread))
+        end
+        aout[outer_range...] .= a.parents[cI][array_range...]
+    end
+end
 
 end # module

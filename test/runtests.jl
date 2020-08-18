@@ -39,3 +39,4 @@ end
 
 include("diskstack.jl")
 include("interpolate.jl")
+include("cfdiskarray.jl")

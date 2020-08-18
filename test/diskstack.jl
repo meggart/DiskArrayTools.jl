@@ -1,3 +1,4 @@
+@testset "DiskStack" begin
 ars = [rand(10,5) for i = 1:3]
 cars = cat(ars...,dims=3)
 dars = map(a->_DiskArray(a,chunksize=(5,2)),ars)
@@ -15,3 +16,4 @@ v = view(ds,:,:,2)
 v2 = view(ds,:,:,[3,1])
 @test v2[:,:,:] == cars[:,:,[3,1]][:,:,:]
 @test all(i->getindex_count(i) == 8,dars)
+end

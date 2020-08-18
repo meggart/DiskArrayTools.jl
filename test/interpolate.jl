@@ -1,3 +1,4 @@
+@testset "Interpolation" begin
 using DiskArrayTools: InterpolatedDiskArray
 using DiskArrayTools.Interpolations
 using DiskArrays: GridChunks
@@ -15,3 +16,4 @@ adi2 = InterpolatedDiskArray(ad,GridChunks((8,2),(4,4)),[1.1,1.2,1.3,1.4,1.6,1.7
 ad = _DiskArray(a, chunksize=(4,3))
 adi3 = InterpolatedDiskArray(ad,GridChunks((3,3),(2,2)),[1.5,2.5,3.5],[1.25,1.5,1.75], order = (Constant(),Constant()))
 @test all(adi3[1:2,1:2] .== a[2,1])
+end

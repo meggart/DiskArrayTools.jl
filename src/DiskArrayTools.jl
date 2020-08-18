@@ -6,7 +6,7 @@ using Base.Iterators: product
 using OffsetArrays: OffsetArray
 
 
-export DiskArrayStack, diskstack, ConcatDiskArray
+export DiskArrayStack, diskstack, ConcatDiskArray, CFDiskArray
 struct DiskArrayStack{T,N,M,NO}<:AbstractDiskArray{T,N}
     arrays::Array{M,NO}
 end
@@ -167,7 +167,7 @@ function CFDiskArray(a::AbstractArray{T}, attr::Dict) where T
   else
     zero(T), one(T)
   end
-  CFDiskArray(a, mv, offs, sc)
+  CFDiskArray(a, T(mv), offs, sc)
 end
 
 Base.size(a::CFDiskArray, args...) = size(a.a, args...)
@@ -178,14 +178,14 @@ iscompressed(a::CFDiskArray) = iscompressed(a.a)
 function readblock!(a::CFDiskArray, aout, r::AbstractVector...)
     mv = a.mv
     sc,offs = a.scale_factor, a.add_offset
-    map!(j->scaleoffs(j,mv,sc,offs), aout, a.a)
+    broadcast!(j->scaleoffs(j,mv,sc,offs), aout, view(a.a,r...))
     nothing
 end
 scaleoffs(x,mv,sc,offs) = x==mv ? missing : x*sc+offs
 function writeblock!(a::CFDiskArray, v, r::AbstractVector...)
     mv = a.mv
     sc,offs = a.scale_factor, a.add_offset
-    map!(j->scaleoffsinv(j,mv,sc,offs), a.a, v)
+    broadcast!(j->scaleoffsinv(j,mv,sc,offs), view(a.a,r...), v)
     nothing
 end
 scaleoffsinv(x,mv::Integer,sc,offs) = ismissing(x) ? mv : round(typeof(mv),(x-offs)/sc)

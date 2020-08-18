@@ -1,7 +1,6 @@
 # DiskArrayTools.jl
 
-![Lifecycle](https://img.shields.io/badge/lifecycle-experimental-orange.svg)<!--
-![Lifecycle](https://img.shields.io/badge/lifecycle-maturing-blue.svg)
+![Lifecycle](https://img.shields.io/badge/lifecycle-maturing-blue.svg)<!--
 ![Lifecycle](https://img.shields.io/badge/lifecycle-stable-green.svg)
 ![Lifecycle](https://img.shields.io/badge/lifecycle-retired-orange.svg)
 ![Lifecycle](https://img.shields.io/badge/lifecycle-archived-red.svg)
@@ -14,3 +13,4 @@ Currently it provides:
 
 - `diskstack` concatenating arrays of the same type to a new DiskArray along a new dimension
 - `InterpolatedDiskArray` interpolates data to a new grid using Interpolations.jl
+- `CFDiskArray` treats disk arrays that use sentinel values for missing data or that have an offset and scaling factor

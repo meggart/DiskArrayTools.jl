@@ -5,6 +5,28 @@ using Interpolations
 using Base.Iterators: product
 using OffsetArrays: OffsetArray
 
+#Define a new chunk grid type for irregular, but still block-shaped grid
+struct IrregularGridChunks{N} <: AbstractArray{CartesianIndices{N,NTuple{N,UnitRange{Int}}},N}
+    cs::NTuple{N,Vector{UnitRange{Int}}}
+    s::NTuple{N,Int}
+end
+Base.size(cs::IrregularGridChunks) = cs.s
+Base.size(cs::IrregularGridChunks,i) = cs.s[i]
+function IrregularGridChunks(cs::Vector{UnitRange{Int}}...)
+    s = length.(cs)
+    IrregularGridChunks((cs...,),s)
+end
+Base.eltype(::IrregularGridChunks{N}) where N = CartesianIndices{N,NTuple{N,UnitRange{Int}}}
+function Base.show(io::IO,g::IrregularGridChunks)
+    stot = last.(g.cs)
+    griddes = join(string.(g.s), "x")
+    sizedes = join(string.(stot), "x")
+    print(io,"Irregular chunk grid of size $griddes over DiskArray of size $stot")
+end
+function Base.getindex(cs::IrregularGridChunks{N},i::Vararg{Int, N}) where N
+    rout = getindex.(cs.cs,i)
+    CartesianIndices(rout)
+end
 
 export DiskArrayStack, diskstack, ConcatDiskArray, CFDiskArray
 struct DiskArrayStack{T,N,M,NO}<:AbstractDiskArray{T,N}
@@ -74,7 +96,14 @@ function Base.view(a::DiskArrayStack{<:Any,N,<:Any,NO},i...) where {N,NO}
 end
 
 abstract type ResampledDiskArray{T,N} <: AbstractDiskArray{T,N} end
-get_readinds(a::ResampledDiskArray, r) = error("get_readinds not implemented for $(typeof(a))")
+
+function readblock!(a::ResampledDiskArray, aout, i::AbstractUnitRange...)
+  parentranges = map((ir,ip)->ip[ir],i,a.newinds)
+  rr = get_readinds(a,parentranges)
+  atemp = a.a[rr...]
+  atemp2 = OffsetArray(atemp,map(r->(first(r)-1),rr))
+  resample_disk(a,aout,atemp2,parentranges)
+end
 
 
 
@@ -142,13 +171,7 @@ function fremap(xout,xin,newinds,ipmeth;bc = Flat())
     xout[i]=interp(ic...)
   end
 end
-function readblock!(a::ResampledDiskArray, aout, i::AbstractUnitRange...)
-    parentranges = map((ir,ip)->ip[ir],i,a.newinds)
-    rr = get_readinds(a,parentranges)
-    atemp = a.a[rr...]
-    atemp2 = OffsetArray(atemp,map(r->(first(r)-1),rr))
-    resample_disk(a,aout,atemp2,parentranges)
-end
+
 
 
 #Use of Sentinel missing value
@@ -261,5 +284,56 @@ function readblock!(a::ConcatDiskArray, aout, inds::AbstractUnitRange...)
         aout[outer_range...] .= a.parents[cI][array_range...]
     end
 end
+function writeblock!(a::ConcatDiskArray, aout, inds::AbstractUnitRange...)
+  error("No method yet for writing into a ConcatDiskArray")
+end
 
+function eachchunk_fallback(aconc::ConcatDiskArray)
+  nested = IterTools.imap(zip(aconc.parents, Iterators.product(aconc.startinds...))) do (par, si)
+      IterTools.imap(eachchunk(par)) do cI
+          cI .+ CartesianIndex(si.-1)
+      end
+  end
+  Iterators.flatten(nested)
+end
+
+#This function will work for DiskArrayStack as well, we only need a fallback_chunksize function
+function DiskArrays.eachchunk(aconc::ConcatDiskArray)
+  fbchunks = eachchunk_fallback(aconc)
+  nd = ndims(first(fbchunks))
+  dout = ntuple(_->Dict{NTuple{nd-1,UnitRange{Int}},Set{UnitRange{Int}}}(),nd)
+  foreach(fbchunks) do c
+    map(enumerate(c.indices)) do (ind,r)
+        other = (c.indices[1:ind-1]...,c.indices[ind+1:end]...)
+        s = get!(dout[ind],other) do 
+            Set{UnitRange{Int}}()
+        end
+        push!(s,c.indices[ind])
+    end
+  end
+  #First check if all 
+  uniqueranges = unique.(values.(dout)) # Here we give up
+  if any(length.(uniqueranges) .> 1)
+    return fbchunks
+  end
+  simplifyaxes = map(uniqueranges) do ur
+    allr = first(ur)
+    allr = sort!(collect(allr),by=first)
+    l = length.(allr)
+    if length(l)==1 
+        allr,(cs = l[1], offs = 0, l = l[1])
+    elseif all(isequal(l[2]),l[2:end-1]) && l[end]<l[2]
+        allr,(cs = l[2], offs = l[2]-l[1], l = allr[end][end])
+    else
+        allr,nothing
+    end
+  end
+  if all(!isnothing,getindex.(simplifyaxes,2))
+    grid = getindex.(simplifyaxes,2)
+    cs,offs,l = getproperty.(grid,:cs),getproperty.(grid,:offs),getproperty.(grid,:l)
+    return GridChunks(l,cs, offset = offs)
+  else
+    return IrregularGridChunks(getindex.(simplifyaxes,1)...)
+  end
+end
 end # module

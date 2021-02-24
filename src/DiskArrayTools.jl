@@ -2,6 +2,7 @@ module DiskArrayTools
 import DiskArrays: AbstractDiskArray, eachchunk, haschunks, Chunked,
 estimate_chunksize, GridChunks, findints, readblock!, writeblock!
 using Interpolations
+using IterTools: imap
 using Base.Iterators: product
 using OffsetArrays: OffsetArray
 
@@ -262,9 +263,7 @@ function ConcatDiskArray(arrays::AbstractArray)
 end
 
 Base.size(a::ConcatDiskArray) = a.size
-
-import DiskArrays: readblock!, writeblock!
-using OffsetArrays: OffsetArray
+haschunks(::ConcatDiskArray) = Chunked()
 function readblock!(a::ConcatDiskArray, aout, inds::AbstractUnitRange...)
     #Find affected blocks and indices in blocks
     blockinds  = map(inds, a.startinds, size(a.parents)) do i, si, s
@@ -289,8 +288,8 @@ function writeblock!(a::ConcatDiskArray, aout, inds::AbstractUnitRange...)
 end
 
 function eachchunk_fallback(aconc::ConcatDiskArray)
-  nested = IterTools.imap(zip(aconc.parents, Iterators.product(aconc.startinds...))) do (par, si)
-      IterTools.imap(eachchunk(par)) do cI
+  nested = imap(zip(aconc.parents, Iterators.product(aconc.startinds...))) do (par, si)
+      imap(eachchunk(par)) do cI
           cI .+ CartesianIndex(si.-1)
       end
   end
@@ -298,7 +297,7 @@ function eachchunk_fallback(aconc::ConcatDiskArray)
 end
 
 #This function will work for DiskArrayStack as well, we only need a fallback_chunksize function
-function DiskArrays.eachchunk(aconc::ConcatDiskArray)
+function eachchunk(aconc::ConcatDiskArray)
   fbchunks = eachchunk_fallback(aconc)
   nd = ndims(first(fbchunks))
   dout = ntuple(_->Dict{NTuple{nd-1,UnitRange{Int}},Set{UnitRange{Int}}}(),nd)
@@ -322,7 +321,7 @@ function DiskArrays.eachchunk(aconc::ConcatDiskArray)
     l = length.(allr)
     if length(l)==1 
         allr,(cs = l[1], offs = 0, l = l[1])
-    elseif all(isequal(l[2]),l[2:end-1]) && l[end]<l[2]
+    elseif all(isequal(l[2]),l[2:end-1]) && l[end]<=l[2]
         allr,(cs = l[2], offs = l[2]-l[1], l = allr[end][end])
     else
         allr,nothing

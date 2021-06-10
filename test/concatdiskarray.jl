@@ -110,15 +110,14 @@ end
     cs1 = DiskArrays.eachchunk(aconc)
 
     @test isapprox(sum(aconc),sum(aar))
-    # This will be fixed when broadcast can deal with irregular chunks
-    @test_broken copy(aconc .+ 1) == aar .+ 1
-    @test length(ad[3,5].getindex_list) == 15
-    @test length(ad[3,4].getindex_list) == 12
+    @test copy(aconc .+ 1) == aar .+ 1
+    @test length(ad[3,5].getindex_list) == 30
+    @test length(ad[3,4].getindex_list) == 24
 
     @test isapprox.(sum(aconc,dims=1), sum(aar,dims=1)) |> all
 
-    @test length(ad[3,5].getindex_list)==30
-    @test length(ad[3,4].getindex_list)==24
+    @test length(ad[3,5].getindex_list)==45
+    @test length(ad[3,4].getindex_list)==36
 end
 
 

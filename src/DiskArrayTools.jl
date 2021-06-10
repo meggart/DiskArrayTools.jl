@@ -132,7 +132,7 @@ function round_readinds(s,r,an)
 end
 
 function get_readinds(a::InterpolatedDiskArray,r)
-  allnearest = all(i->isa(i,Union{Nothing,BSpline{Constant}}),a.meth)
+  allnearest = all(i->isa(i,Union{Nothing,BSpline{<:Constant}}),a.meth)
   round_readinds.(size(a.a),r,allnearest)
 end
 

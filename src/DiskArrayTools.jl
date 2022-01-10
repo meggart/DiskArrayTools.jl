@@ -1,33 +1,12 @@
 module DiskArrayTools
 import DiskArrays: AbstractDiskArray, eachchunk, haschunks, Chunked,
-estimate_chunksize, GridChunks, findints, readblock!, writeblock!
+estimate_chunksize, GridChunks, findints, readblock!, writeblock!, 
+RegularChunks, IrregularChunks, ChunkType, approx_chunksize
 using Interpolations
 using IterTools: imap
 using Base.Iterators: product
 using OffsetArrays: OffsetArray
 
-#Define a new chunk grid type for irregular, but still block-shaped grid
-struct IrregularGridChunks{N} <: AbstractArray{CartesianIndices{N,NTuple{N,UnitRange{Int}}},N}
-    cs::NTuple{N,Vector{UnitRange{Int}}}
-    s::NTuple{N,Int}
-end
-Base.size(cs::IrregularGridChunks) = cs.s
-Base.size(cs::IrregularGridChunks,i) = cs.s[i]
-function IrregularGridChunks(cs::Vector{UnitRange{Int}}...)
-    s = length.(cs)
-    IrregularGridChunks((cs...,),s)
-end
-Base.eltype(::IrregularGridChunks{N}) where N = CartesianIndices{N,NTuple{N,UnitRange{Int}}}
-function Base.show(io::IO,g::IrregularGridChunks)
-    stot = last.(g.cs)
-    griddes = join(string.(g.s), "x")
-    sizedes = join(string.(stot), "x")
-    print(io,"Irregular chunk grid of size $griddes over DiskArray of size $stot")
-end
-function Base.getindex(cs::IrregularGridChunks{N},i::Vararg{Int, N}) where N
-    rout = getindex.(cs.cs,i)
-    CartesianIndices(rout)
-end
 
 export DiskArrayStack, diskstack, ConcatDiskArray, CFDiskArray
 struct DiskArrayStack{T,N,M,NO}<:AbstractDiskArray{T,N}
@@ -40,11 +19,10 @@ end
 Base.size(r::DiskArrayStack) = (size(r.arrays[1])...,size(r.arrays)...)
 haschunks(a::DiskArrayStack) = haschunks(a.arrays[1])
 iscompressed(a::DiskArrayStack) = any(iscompressed,a.arrays)
-function eachchunk(a::DiskArrayStack{<:Any,<:Any,<:Any,NO}) where NO
-    iterold = eachchunk(a.arrays[1])
-    cs = (iterold.chunksize...,ntuple(one,NO)...)
-    co = (iterold.offset...,ntuple(zero,NO)...)
-    GridChunks(a,cs,offset=co)
+function eachchunk(a::DiskArrayStack)
+    oldchunks = eachchunk(a.arrays[1]).chunks
+    newchunks = map(s->RegularChunks(1,0,s),size(a.arrays))
+    GridChunks(oldchunks..., newchunks...)
 end
 
 function readblock!(a::DiskArrayStack{<:Any,N,<:Any,NO},aout,i::AbstractVector...) where {N,NO}
@@ -287,52 +265,67 @@ function writeblock!(a::ConcatDiskArray, aout, inds::AbstractUnitRange...)
   error("No method yet for writing into a ConcatDiskArray")
 end
 
-function eachchunk_fallback(aconc::ConcatDiskArray)
-  nested = imap(zip(aconc.parents, Iterators.product(aconc.startinds...))) do (par, si)
-      imap(eachchunk(par)) do cI
-          cI .+ CartesianIndex(si.-1)
-      end
+function mergechunks(a::RegularChunks, b::RegularChunks)
+  if a.s==0 || (a.cs == b.cs && length(last(a))==a.cs)
+    RegularChunks(a.cs, a.offset,a.s+b.s)
+  else
+    mergechunks_irregular(a,b)
   end
-  Iterators.flatten(nested)
+end
+
+mergechunks(a::ChunkType, b::ChunkType) = mergechunks_irregular(a,b)
+function mergechunks_irregular(a, b)
+  IrregularChunks(chunksizes = filter(!iszero,[length.(a); length.(b)]))
 end
 
 #This function will work for DiskArrayStack as well, we only need a fallback_chunksize function
 function eachchunk(aconc::ConcatDiskArray)
-  fbchunks = eachchunk_fallback(aconc)
-  nd = ndims(first(fbchunks))
-  dout = ntuple(_->Dict{NTuple{nd-1,UnitRange{Int}},Set{UnitRange{Int}}}(),nd)
-  foreach(fbchunks) do c
-    map(enumerate(c.indices)) do (ind,r)
-        other = (c.indices[1:ind-1]...,c.indices[ind+1:end]...)
-        s = get!(dout[ind],other) do 
-            Set{UnitRange{Int}}()
-        end
-        push!(s,c.indices[ind])
-    end
+  N = ndims(aconc)
+  s = size(aconc)
+  oldchunks = eachchunk.(aconc.parents)
+  newchunks = ntuple(N) do i
+    sliceinds = Base.setindex(map(_ -> 1,s),:,i)
+    v = map(c->c.chunks[i],oldchunks[sliceinds...])
+    init = RegularChunks(approx_chunksize(first(v)),0,0)
+    reduce(mergechunks, v, init=init)
   end
-  #First check if all 
-  uniqueranges = unique.(values.(dout)) # Here we give up
-  if any(length.(uniqueranges) .> 1)
-    return fbchunks
-  end
-  simplifyaxes = map(uniqueranges) do ur
-    allr = first(ur)
-    allr = sort!(collect(allr),by=first)
-    l = length.(allr)
-    if length(l)==1 
-        allr,(cs = l[1], offs = 0, l = l[1])
-    elseif all(isequal(l[2]),l[2:end-1]) && l[end]<=l[2]
-        allr,(cs = l[2], offs = l[2]-l[1], l = allr[end][end])
-    else
-        allr,nothing
-    end
-  end
-  if all(!isnothing,getindex.(simplifyaxes,2))
-    grid = getindex.(simplifyaxes,2)
-    cs,offs,l = getproperty.(grid,:cs),getproperty.(grid,:offs),getproperty.(grid,:l)
-    return GridChunks(l,cs, offset = offs)
-  else
-    return IrregularGridChunks(getindex.(simplifyaxes,1)...)
-  end
+  GridChunks(newchunks...)
 end
+
+#   nd = ndims(first(fbchunks))
+#   dout = ntuple(_->Dict{NTuple{nd-1,UnitRange{Int}},Set{UnitRange{Int}}}(),nd)
+#   foreach(fbchunks) do c
+#     map(enumerate(c.indices)) do (ind,r)
+#         other = (c.indices[1:ind-1]...,c.indices[ind+1:end]...)
+#         s = get!(dout[ind],other) do 
+#             Set{UnitRange{Int}}()
+#         end
+#         push!(s,c.indices[ind])
+#     end
+#   end
+#   #First check if all 
+#   uniqueranges = unique.(values.(dout)) # Here we give up
+#   if any(length.(uniqueranges) .> 1)
+#     return fbchunks
+#   end
+#   simplifyaxes = map(uniqueranges) do ur
+#     allr = first(ur)
+#     allr = sort!(collect(allr),by=first)
+#     l = length.(allr)
+#     if length(l)==1 
+#         allr,RegularChunks(l[1], 0, l[1])
+#     elseif all(isequal(l[2]),l[2:end-1]) && l[end]<=l[2]
+#         allr,RegularChunks(l[2], l[2]-l[1], allr[end][end])
+#     else
+#         allr,nothing
+#     end
+#   end
+#   if all(!isnothing,getindex.(simplifyaxes,2))
+#     grid = getindex.(simplifyaxes,2)
+#     cs,offs,l = getproperty.(grid,:cs),getproperty.(grid,:offs),getproperty.(grid,:l)
+#     return GridChunks(l,cs, offset = offs)
+#   else
+#     return IrregularGridChunks(getindex.(simplifyaxes,1)...)
+#   end
+# end
 end # module

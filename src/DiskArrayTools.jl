@@ -292,40 +292,4 @@ function eachchunk(aconc::ConcatDiskArray)
   GridChunks(newchunks...)
 end
 
-#   nd = ndims(first(fbchunks))
-#   dout = ntuple(_->Dict{NTuple{nd-1,UnitRange{Int}},Set{UnitRange{Int}}}(),nd)
-#   foreach(fbchunks) do c
-#     map(enumerate(c.indices)) do (ind,r)
-#         other = (c.indices[1:ind-1]...,c.indices[ind+1:end]...)
-#         s = get!(dout[ind],other) do 
-#             Set{UnitRange{Int}}()
-#         end
-#         push!(s,c.indices[ind])
-#     end
-#   end
-#   #First check if all 
-#   uniqueranges = unique.(values.(dout)) # Here we give up
-#   if any(length.(uniqueranges) .> 1)
-#     return fbchunks
-#   end
-#   simplifyaxes = map(uniqueranges) do ur
-#     allr = first(ur)
-#     allr = sort!(collect(allr),by=first)
-#     l = length.(allr)
-#     if length(l)==1 
-#         allr,RegularChunks(l[1], 0, l[1])
-#     elseif all(isequal(l[2]),l[2:end-1]) && l[end]<=l[2]
-#         allr,RegularChunks(l[2], l[2]-l[1], allr[end][end])
-#     else
-#         allr,nothing
-#     end
-#   end
-#   if all(!isnothing,getindex.(simplifyaxes,2))
-#     grid = getindex.(simplifyaxes,2)
-#     cs,offs,l = getproperty.(grid,:cs),getproperty.(grid,:offs),getproperty.(grid,:l)
-#     return GridChunks(l,cs, offset = offs)
-#   else
-#     return IrregularGridChunks(getindex.(simplifyaxes,1)...)
-#   end
-# end
 end # module

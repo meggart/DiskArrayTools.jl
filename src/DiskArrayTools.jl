@@ -180,14 +180,14 @@ iscompressed(a::CFDiskArray) = iscompressed(a.a)
 function readblock!(a::CFDiskArray, aout, r::AbstractVector...)
     mv = a.mv
     sc,offs = a.scale_factor, a.add_offset
-    broadcast!(j->scaleoffs(j,mv,sc,offs), aout, view(a.a,r...))
+    broadcast!(j->scaleoffs(j,mv,sc,offs), aout, a.a[r...])
     nothing
 end
 scaleoffs(x,mv,sc,offs) = x==mv ? missing : x*sc+offs
 function writeblock!(a::CFDiskArray, v, r::AbstractVector...)
     mv = a.mv
     sc,offs = a.scale_factor, a.add_offset
-    broadcast!(j->scaleoffsinv(j,mv,sc,offs), view(a.a,r...), v)
+    a.a[r...] = broadcast(j->scaleoffsinv(j,mv,sc,offs), v)
     nothing
 end
 scaleoffsinv(x,mv::Integer,sc,offs) = ismissing(x) ? mv : round(typeof(mv),(x-offs)/sc)
@@ -258,7 +258,7 @@ function readblock!(a::ConcatDiskArray, aout, inds::AbstractUnitRange...)
         outer_range = map(cI.I, a.startinds, array_range, inds) do ii, si, ar, indstoread
             (first(ar)+si[ii]-first(indstoread)):(last(ar)+si[ii]-first(indstoread))
         end
-        aout[outer_range...] .= a.parents[cI][array_range...]
+        aout[outer_range...] = a.parents[cI][array_range...]
     end
 end
 function writeblock!(a::ConcatDiskArray, aout, inds::AbstractUnitRange...)

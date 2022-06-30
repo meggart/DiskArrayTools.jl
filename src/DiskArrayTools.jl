@@ -169,6 +169,12 @@ function CFDiskArray(a::AbstractArray{T}, attr::Dict) where T
   else
     zero(T), one(T)
   end
+  mv = try
+    convert(T,mv)
+  catch
+    @warn "Could not convert missing value $mv to type $T"
+    T<:AbstractFloat ? T(NaN) : typemax(T)
+  end
   CFDiskArray(a, T(mv), offs, sc)
 end
 
@@ -183,7 +189,7 @@ function readblock!(a::CFDiskArray, aout, r::AbstractVector...)
     broadcast!(j->scaleoffs(j,mv,sc,offs), aout, a.a[r...])
     nothing
 end
-scaleoffs(x,mv,sc,offs) = x==mv ? missing : x*sc+offs
+scaleoffs(x,mv,sc,offs) = isequal(x,mv) ? missing : x*sc+offs
 function writeblock!(a::CFDiskArray, v, r::AbstractVector...)
     mv = a.mv
     sc,offs = a.scale_factor, a.add_offset

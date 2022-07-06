@@ -161,7 +161,8 @@ struct CFDiskArray{T,N,ST,P<:AbstractArray{ST,N}} <: AbstractDiskArray{Union{T,M
     scale_factor::T
 end
 function CFDiskArray(a::AbstractArray{T}, attr::Dict) where T
-  mv = get(attr,"missing_value",get(attr,"_FillValue",typemax(T)))
+  Tnm = nonmissingtype(T)
+  mv = get(attr,"missing_value",get(attr,"_FillValue",typemax(Tnm)))
   offs,sc = if haskey(attr,"add_offset") || haskey(attr,"scale_factor")
     offs = get(attr,"add_offset",zero(Float16))
     sc = get(attr,"scale_factor",one(Float16))
@@ -175,7 +176,7 @@ function CFDiskArray(a::AbstractArray{T}, attr::Dict) where T
     @warn "Could not convert missing value $mv to type $T"
     T<:AbstractFloat ? T(NaN) : typemax(T)
   end
-  CFDiskArray(a, T(mv), offs, sc)
+  CFDiskArray(a, Tnm(mv), offs, sc)
 end
 
 Base.size(a::CFDiskArray, args...) = size(a.a, args...)

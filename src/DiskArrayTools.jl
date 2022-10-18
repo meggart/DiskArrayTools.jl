@@ -1,7 +1,7 @@
 module DiskArrayTools
 import DiskArrays: AbstractDiskArray, eachchunk, haschunks, Chunked,
 estimate_chunksize, GridChunks, findints, readblock!, writeblock!, 
-RegularChunks, IrregularChunks, ChunkType, approx_chunksize
+RegularChunks, IrregularChunks, ChunkType, approx_chunksize, chunktype_from_chunksizes
 using Interpolations
 using IterTools: imap
 using Base.Iterators: product
@@ -148,6 +148,67 @@ function fremap(xout,xin,newinds,ipmeth;bc = Flat())
   interp = extrapolate(interpolate(xin, ipmeth), bc)
   for (i,ic) in enumerate(Iterators.product(newinds...))
     xout[i]=interp(ic...)
+  end
+end
+
+function aggregate_chunks(cs,agg)
+  lcs = cumsum(length.(cs))
+  lagg = cumsum(length.(agg))
+  inds = [searchsortedfirst(lagg,lc) for lc in lcs]
+  chunktype_from_chunksizes(diff([0;inds]))
+end
+interpret_aggsize(_, x::ChunkType) = x
+interpret_aggsize(sparent,x) = RegularChunks(x,0,sparent)
+
+
+struct AggregatedDiskArray{T,N,A<:AbstractArray{T,N},I,F,CS<:Union{Nothing,GridChunks{N}}} <: ResampledDiskArray{T,N}
+  a::A
+  newinds::I
+  aggfun::F
+  chunksize::CS
+  dimkw::Bool
+end
+Base.size(a::AggregatedDiskArray) = map(length,a.newinds)
+eachchunk(a::AggregatedDiskArray) = a.chunksize
+function AggregatedDiskArray(parent,aggsizes,aggfun;chunksizes=nothing,dimkw=true)
+  newinds = GridChunks(interpret_aggsize.(size(parent),aggsizes)...)
+  if chunksizes === nothing
+      chunksizes = GridChunks(aggregate_chunks.(eachchunk(parent).chunks,newinds.chunks)...)
+  end
+  AggregatedDiskArray(parent,newinds.chunks,aggfun,chunksizes,dimkw)
+end
+
+
+get_readinds(::AggregatedDiskArray, parentranges) = map(r->first(first(r)):last(last(r)),parentranges)
+function resample_disk(a::AggregatedDiskArray,aout,atemp2,parentranges)
+  if a.dimkw
+    resample_disk_dimkw(a,aout,atemp2,parentranges)
+  else
+    resample_disk_loop(a,aout,atemp2,parentranges)
+  end
+end
+
+#Generic fallback
+function resample_disk_loop(a::AggregatedDiskArray,aout,atemp2,parentranges)
+  allr = collect(Iterators.product(parentranges...))
+  for ic in eachindex(allr)
+      ii = allr[ic...]
+      aout[ic...] = a.aggfun(atemp2[ii...])
+  end
+end
+
+function resample_disk_dimkw(a::AggregatedDiskArray,aout,atemp2,parentranges)
+  allpure = map(parentranges) do pr
+    all(i->length(i)==1,pr) ? [Colon()] : pr
+  end
+  alloutinds = map(allpure) do pr
+    isa(pr[1],Colon) ? pr : 1:length(pr)
+  end
+  dimkw = (findall(i->i[1] !== Colon(), allpure)...,)
+  allr = Iterators.product(allpure...)
+  outr = Iterators.product(alloutinds...)
+  for (ii,iout) in zip(allr, outr)
+      aout[iout...] = a.aggfun(atemp2[ii...],dims=dimkw)
   end
 end
 

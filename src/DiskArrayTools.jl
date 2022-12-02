@@ -215,28 +215,40 @@ end
 
 
 #Use of Sentinel missing value
-struct CFDiskArray{T,N,ST,P<:AbstractArray{ST,N}} <: AbstractDiskArray{Union{T,Missing},N}
+struct CFDiskArray{T,N,MT,P,OT} <: AbstractDiskArray{T,N}
     a::P
-    mv::ST
-    add_offset::T
-    scale_factor::T
+    mv::MT
+    add_offset::OT
+    scale_factor::OT
 end
 function CFDiskArray(a::AbstractArray{T}, attr::Dict) where T
-  mv = get(attr,"missing_value",get(attr,"_FillValue",typemax(T)))
+  mv = get(attr,"missing_value",get(attr,"_FillValue",nothing))
   offs,sc = if haskey(attr,"add_offset") || haskey(attr,"scale_factor")
-    offs = get(attr,"add_offset",zero(Float16))
-    sc = get(attr,"scale_factor",one(Float16))
+    offs = get(attr,"add_offset",false)
+    sc = get(attr,"scale_factor",true)
     promote(offs,sc)
   else
     zero(T), one(T)
   end
-  mv = try
-    convert(T,mv)
-  catch
-    @warn "Could not convert missing value $mv to type $T"
-    T<:AbstractFloat ? T(NaN) : typemax(T)
+  #Short track if there is nothing to do
+  if mv === nothing && offs==zero(offs) && sc == one(sc)
+    return a
   end
-  CFDiskArray(a, T(mv), offs, sc)
+  # Now check if element type of a is ok to use
+  T_pure = typeof(offs)
+  if T >: Missing 
+    if mv !== nothing
+      @warn "Trying to construct a CFDiskArray from an array that already contains missings. In case this comes from a Zarr dataset, consider opening the dataset with `fill_as_missing=false`"
+    else
+      T_pure = Union{T_pure,Missing}
+    end
+  end
+  S,mv = if mv === nothing
+    T_pure,mv
+  else
+    Union{T_pure,Missing},convert(T_pure,mv)
+  end
+  CFDiskArray{S,ndims(a),typeof(mv),typeof(a),typeof(offs)}(a, mv, offs, sc)
 end
 
 Base.size(a::CFDiskArray, args...) = size(a.a, args...)
@@ -247,19 +259,21 @@ iscompressed(a::CFDiskArray) = iscompressed(a.a)
 function readblock!(a::CFDiskArray, aout, r::AbstractVector...)
     mv = a.mv
     sc,offs = a.scale_factor, a.add_offset
-    broadcast!(j->scaleoffs(j,mv,sc,offs), aout, a.a[r...])
+    broadcast!(scaleoffs, aout, a.a[r...],mv,sc,offs)
     nothing
 end
-scaleoffs(x,mv,sc,offs) = isequal(x,mv) ? missing : x*sc+offs
+checkmiss(x,mv) = isequal(x,mv)
+checkmiss(_,::Nothing) = false
+scaleoffs(x,mv,sc,offs) = checkmiss(x,mv) ? missing : x*sc+offs
 function writeblock!(a::CFDiskArray, v, r::AbstractVector...)
     mv = a.mv
     sc,offs = a.scale_factor, a.add_offset
-    a.a[r...] = broadcast(j->scaleoffsinv(j,mv,sc,offs), v)
+    a.a[r...] = broadcast(scaleoffsinv, v,mv,sc,offs)
     nothing
 end
 scaleoffsinv(x,mv::Integer,sc,offs) = ismissing(x) ? mv : round(typeof(mv),(x-offs)/sc)
 scaleoffsinv(x,mv,sc,offs) = ismissing(x) ? mv : ((x-offs)/sc)
-
+scaleoffsinv(x,::Nothing,sc,offs) = (x-offs)/sc
 
 struct ConcatDiskArray{T,N,P} <: AbstractDiskArray{T,N}
     parents::P

@@ -14,4 +14,26 @@ a2[3,:] .= missing
 @test a2[1,:] == fill(9.5,10)
 @test a2[2,:] == fill(10.5,10)
 @test all(ismissing,a2[3,:])
+
+b = _DiskArray([0.0, missing, 2.0, NaN], chunksize=(3,))
+
+b1 = @test_warn "construct a CFDiskArray" CFDiskArray(b,Dict("missing_value"=>NaN, "add_offset"=>10, "scale_factor"=>2.0))
+@test eltype(b1) <: Union{Float64,Missing}
+@test all(isequal.(b1[:],[10.0,missing,14.0,missing]))
+b1[3:4] = [12.0, 14.0]
+b1[1:2] = [missing,missing]
+@test isequal.(b1[:],[missing,missing,12.0,14.0]) == [true,true,true,true]
+@test isnan(b1.a[2])
+
+b = _DiskArray([0.0, missing, 2.0, NaN], chunksize=(3,))
+b2 = CFDiskArray(b,Dict("add_offset"=>0, "scale_factor"=>1.0))
+@test b2 isa _DiskArray
+
+b = _DiskArray([0.0, missing, 2.0, NaN], chunksize=(3,))
+b3 = CFDiskArray(b,Dict("add_offset"=>0, "scale_factor"=>1.0))
+@test eltype(b3) <: Union{Float64,Missing}
+@test all(isequal.(b3[:],[0.0, missing, 2.0, NaN]))
+b3[3:4] = [12.0, 14.0]
+b3[1:2] = [missing,missing]
+@test all(isequal.(b1[:],[missing,missing,12.0,14.0]))
 end

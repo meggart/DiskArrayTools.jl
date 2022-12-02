@@ -17,7 +17,7 @@ a2[3,:] .= missing
 
 b = _DiskArray([0.0, missing, 2.0, NaN], chunksize=(3,))
 
-b1 = @test_warn "construct a CFDiskArray" CFDiskArray(b,Dict("missing_value"=>NaN, "add_offset"=>10, "scale_factor"=>2.0))
+b1 = CFDiskArray(b,Dict("missing_value"=>NaN, "add_offset"=>10, "scale_factor"=>2.0))
 @test eltype(b1) <: Union{Float64,Missing}
 @test all(isequal.(b1[:],[10.0,missing,14.0,missing]))
 b1[3:4] = [12.0, 14.0]

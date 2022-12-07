@@ -47,4 +47,11 @@ b = CFDiskArray(fill(1f0, 3, 3, 3),
                      "missing_value" => NaN))
 @test eltype(b) == Union{Float32, Missing}
 
+b = CFDiskArray([1f0 ,missing],
+                Dict("add_offset" => 0.0,
+                     "scale_factor" => 1.0,
+                     "missing_value" => NaN))
+@test eltype(b) == Union{Float32, Missing}
+
+
 end

@@ -224,9 +224,13 @@ end
 function CFDiskArray(a::AbstractArray{T}, attr::Dict) where T
   mv = get(attr,"missing_value",get(attr,"_FillValue",nothing))
   offs,sc = if haskey(attr,"add_offset") || haskey(attr,"scale_factor")
-    offs = get(attr,"add_offset",false)
-    sc = get(attr,"scale_factor",true)
-    promote(offs,sc)
+    _offs = get(attr,"add_offset",false)
+    _sc = get(attr,"scale_factor",true)
+    if _offs isa AbstractFloat && _sc isa AbstractFloat && T <: AbstractFloat
+      T(_offs), T(_sc)
+    else
+      promote(_offs,_sc)
+    end
   else
     zero(T), one(T)
   end

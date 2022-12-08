@@ -53,5 +53,25 @@ b = CFDiskArray([1f0 ,missing],
                      "missing_value" => NaN))
 @test eltype(b) == Union{Float32, Missing}
 
+b = CFDiskArray([1.0f0, missing],
+    Dict("add_offset" => 0.0,
+        "scale_factor" => 1.0))
+@test eltype(b) == Union{Float32,Missing}
 
+
+b = CFDiskArray([1.0f0, missing], Dict())
+@test eltype(b) == Union{Float32,Missing}
+
+b = CFDiskArray([1.0f0, 1.0f0], Dict("missing_value" => NaN))
+@test eltype(b) == Union{Float32,Missing}
+
+b = CFDiskArray([1.0f0, 2.0f0],
+    Dict("add_offset" => 0.0,
+        "scale_factor" => 1.0))
+@test eltype(b) == Float32
+
+# CF conventions prescribe a "_FillValue field"
+b = CFDiskArray([1.0f0, 2.0f0],
+                Dict("_FillValue" => NaN32))
+@test eltype(b) == Float32
 end

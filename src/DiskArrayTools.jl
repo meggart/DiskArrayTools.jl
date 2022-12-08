@@ -223,7 +223,7 @@ struct CFDiskArray{T,N,MT,P,OT} <: AbstractDiskArray{T,N}
     scale_factor::OT
 end
 function CFDiskArray(a::AbstractArray{T}, attr::Dict) where T
-  mv = get(attr,"missing_value",get(attr,"_FillValue",nothing))
+  mv = get(attr,"missing_value", nothing)
   offs, sc = if haskey(attr, "add_offset") || haskey(attr, "scale_factor")
     _offs = get(attr, "add_offset", false)
     _sc = get(attr, "scale_factor", true)

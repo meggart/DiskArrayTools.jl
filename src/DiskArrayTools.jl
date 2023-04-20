@@ -1,5 +1,5 @@
 module DiskArrayTools
-import DiskArrays: AbstractDiskArray, eachchunk, haschunks, Chunked,
+import DiskArrays: AbstractDiskArray, eachchunk, haschunks, Chunked,Unchunked,
 estimate_chunksize, GridChunks, findints, readblock!, writeblock!, 
 RegularChunks, IrregularChunks, ChunkType, approx_chunksize, chunktype_from_chunksizes
 using Interpolations
@@ -131,8 +131,8 @@ function InterpolatedDiskArray(a::AbstractArray,chunksize,newinds...; order=Line
     InterpolatedDiskArray(a,ni2,me,bc,chunksize)
 end
 Base.size(a::InterpolatedDiskArray) = map(length,a.newinds)
-haschunks(a::InterpolatedDiskArray{<:Any,<:Any,<:Any,<:Any,<:Any,<:Any,<:GridChunks}) = true
-haschunks(a::InterpolatedDiskArray{<:Any,<:Any,<:Any,<:Any,<:Any,<:Any,Nothing}) = false
+haschunks(a::InterpolatedDiskArray{<:Any,<:Any,<:Any,<:Any,<:Any,<:Any,<:GridChunks}) = Chunked()
+haschunks(a::InterpolatedDiskArray{<:Any,<:Any,<:Any,<:Any,<:Any,<:Any,Nothing}) = Unchunked()
 eachchunk(a::InterpolatedDiskArray{<:Any,<:Any,<:Any,<:Any,<:Any,<:Any,<:GridChunks}) = a.chunksize
 
 function resample_disk(a::InterpolatedDiskArray,aout,atemp,parentranges)

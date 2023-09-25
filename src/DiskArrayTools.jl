@@ -8,7 +8,7 @@ using Base.Iterators: product
 using OffsetArrays: OffsetArray
 
 
-export DiskArrayStack, diskstack, ConcatDiskArray, CFDiskArray
+export DiskArrayStack, diskstack, ConcatDiskArray, CFDiskArray, ChunkedFillArray
 struct DiskArrayStack{T,N,M,NO}<:AbstractDiskArray{T,N}
     arrays::Array{M,NO}
 end
@@ -378,5 +378,18 @@ function eachchunk(aconc::ConcatDiskArray)
   end
   GridChunks(newchunks...)
 end
+
+"""
+  ChunkedFillArray(v::T, size, chunksize)
+Construct a lazy fill array with a value `v` with the n-dimensional `size` which behaves as a chunked DiskArray with chunks of the size `chunksize`.
+"""
+struct ChunkedFillArray{T,N} <: AbstractDiskArray{T,N}
+  v::T
+  s::NTuple{N,Int}
+  chunksize::NTuple{N,Int}
+end
+Base.size(x::ChunkedFillArray) = x.s
+readblock!(x::ChunkedFillArray,aout,r::AbstractVector...) = aout .= x.v
+eachchunk(x::ChunkedFillArray) = GridChunks(x.s,x.chunksize)
 
 end # module

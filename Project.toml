@@ -1,7 +1,7 @@
 name = "DiskArrayTools"
 uuid = "fcd2136c-9f69-4db6-97e5-f31981721d63"
 authors = ["Fabian Gans <fgans@bgc-jena.mpg.de>"]
-version = "0.1.8"
+version = "0.1.9"
 
 [deps]
 DiskArrays = "3c3547ce-8d99-4f5e-a174-61eb10b00ae3"

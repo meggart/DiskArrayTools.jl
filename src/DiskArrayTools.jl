@@ -213,8 +213,6 @@ function resample_disk_dimkw(a::AggregatedDiskArray,aout,atemp2,parentranges)
 end
 
 
-remove_missing(::Type{T}) where T <: Union{Missing, T2} where T2 = T2
-
 #Use of Sentinel missing value
 struct CFDiskArray{T,N,MT,P,OT} <: AbstractDiskArray{T,N}
     a::P
@@ -227,7 +225,7 @@ function CFDiskArray(a::AbstractArray{T}, attr::Dict) where T
   offs, sc = if haskey(attr, "add_offset") || haskey(attr, "scale_factor")
     _offs = get(attr, "add_offset", false)
     _sc = get(attr, "scale_factor", true)
-    T2 = remove_missing(T)
+    T2 = Base.nonmissingtype(T)
     if _offs isa AbstractFloat && _sc isa AbstractFloat && T2 <: AbstractFloat
       T2(_offs), T2(_sc)
     else

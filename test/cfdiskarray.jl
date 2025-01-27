@@ -70,6 +70,12 @@ b = CFDiskArray([1.0f0, 2.0f0],
         "scale_factor" => 1.0))
 @test eltype(b) == Float32
 
+b = CFDiskArray([10, -9999],
+    Dict("scale_factor" => Float16(0.1),
+        "missing_value" => -9999))
+@test eltype(b) == Union{Missing, Float16}
+@test ismissing(b[2])
+
 # CF conventions prescribe a "_FillValue field"
 b = CFDiskArray([1.0f0, 2.0f0],
                 Dict("_FillValue" => NaN32))

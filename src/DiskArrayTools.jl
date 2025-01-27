@@ -252,7 +252,7 @@ function CFDiskArray(a::AbstractArray{T}, attr::Dict) where T
   S,mv = if mv === nothing
     T_pure,mv
   else
-    Union{T_pure,Missing},convert(T_pure,mv)
+    Union{T_pure,Missing},mv
   end
   CFDiskArray{S,ndims(a),typeof(mv),typeof(a),typeof(offs)}(a, mv, offs, sc)
 end

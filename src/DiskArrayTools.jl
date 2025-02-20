@@ -1,7 +1,7 @@
 module DiskArrayTools
 import DiskArrays: AbstractDiskArray, eachchunk, haschunks, Chunked,Unchunked,
-estimate_chunksize, GridChunks, findints, readblock!, writeblock!, 
-RegularChunks, IrregularChunks, ChunkType, approx_chunksize, chunktype_from_chunksizes
+estimate_chunksize, GridChunks, readblock!, writeblock!, 
+RegularChunks, IrregularChunks, ChunkVector, approx_chunksize, chunktype_from_chunksizes
 using Interpolations
 using IterTools: imap
 using Base.Iterators: product
@@ -157,7 +157,7 @@ function aggregate_chunks(cs,agg)
   inds = [searchsortedfirst(lagg,lc) for lc in lcs]
   chunktype_from_chunksizes(diff([0;inds]))
 end
-interpret_aggsize(_, x::ChunkType) = x
+interpret_aggsize(_, x::ChunkVector) = x
 interpret_aggsize(sparent,x) = RegularChunks(x,0,sparent)
 
 
@@ -351,14 +351,14 @@ function writeblock!(a::ConcatDiskArray, aout, inds::AbstractUnitRange...)
 end
 
 function mergechunks(a::RegularChunks, b::RegularChunks)
-  if a.s==0 || (a.cs == b.cs && length(last(a))==a.cs)
-    RegularChunks(a.cs, a.offset,a.s+b.s)
+  if a.arraysize==0 || (a.chunksize == b.chunksize && length(last(a))==a.chunksize)
+    RegularChunks(a.chunksize, a.offset,a.arraysize+b.arraysize)
   else
     mergechunks_irregular(a,b)
   end
 end
 
-mergechunks(a::ChunkType, b::ChunkType) = mergechunks_irregular(a,b)
+mergechunks(a::ChunkVector, b::ChunkVector) = mergechunks_irregular(a,b)
 function mergechunks_irregular(a, b)
   IrregularChunks(chunksizes = filter(!iszero,[length.(a); length.(b)]))
 end

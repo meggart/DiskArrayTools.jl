@@ -378,16 +378,25 @@ function eachchunk(aconc::ConcatDiskArray)
 end
 
 """
-  ChunkedFillArray(v::T, size, chunksize)
-Construct a lazy fill array with a value `v` with the n-dimensional `size` which behaves as a chunked DiskArray with chunks of the size `chunksize`.
+  ChunkedFillArray(value::T, size, chunks)
+Construct a lazy fill array with a value `value` with the n-dimensional `size` which behaves as a chunked DiskArray with a chunking structure of `chunks`.
 """
 struct ChunkedFillArray{T,N} <: AbstractDiskArray{T,N}
-  v::T
-  s::NTuple{N,Int}
-  chunksize::NTuple{N,Int}
+  value::T
+  arrsize::NTuple{N,Int}
+  chunks::GridChunks{N}
+  ChunkedFillArray{T,N}(value, arrsize, chunksize::NTuple{N, Int}) where {T,N} = new{T,N}(value, arrsize, GridChunks(arrsize, chunksize))
+  ChunkedFillArray{T,N}(value, arrsize, chunks::GridChunks{N}) where {T,N} = new{T,N}(value, arrsize, chunks)
 end
-Base.size(x::ChunkedFillArray) = x.s
-readblock!(x::ChunkedFillArray,aout,r::AbstractVector...) = aout .= x.v
-eachchunk(x::ChunkedFillArray) = GridChunks(x.s,x.chunksize)
+
+ChunkedFillArray(value::T, arrsize::NTuple{N, Int}, chunksize::NTuple{N,Int}) where {T,N} = ChunkedFillArray{T,N}(value, arrsize, GridChunks(arrsize, chunksize))
+ChunkedFillArray(value::T, arrsize::NTuple{N, Int}, chunks::GridChunks{N}) where {T,N} = ChunkedFillArray{T,N}(value, arrsize, chunks)
+ChunkedFillArray{T}(value, arrsize::NTuple{N, Int}, chunksize::NTuple{N,Int}) where {T,N} = ChunkedFillArray{T,N}(value, arrsize, GridChunks(arrsize, chunksize))
+ChunkedFillArray{T}(value, arrsize::NTuple{N, Int}, chunks::GridChunks{N}) where {T,N} = ChunkedFillArray{T,N}(value, arrsize, chunks)
+
+
+Base.size(x::ChunkedFillArray) = x.arrsize
+readblock!(x::ChunkedFillArray,aout,r::AbstractVector...) = aout .= x.value
+eachchunk(x::ChunkedFillArray) = x.chunks
 
 end # module

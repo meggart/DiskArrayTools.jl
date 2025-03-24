@@ -381,12 +381,15 @@ end
   ChunkedFillArray(value::T, size, chunks)
 Construct a lazy fill array with a value `value` with the n-dimensional `size` which behaves as a chunked DiskArray with a chunking structure of `chunks`.
 """
-struct ChunkedFillArray{T,N} <: AbstractDiskArray{T,N}
+struct ChunkedFillArray{T,N,C} <: AbstractDiskArray{T,N}
   value::T
   arrsize::NTuple{N,Int}
-  chunks::GridChunks{N}
-  ChunkedFillArray{T,N}(value, arrsize, chunksize::NTuple{N, Int}) where {T,N} = new{T,N}(value, arrsize, GridChunks(arrsize, chunksize))
-  ChunkedFillArray{T,N}(value, arrsize, chunks::GridChunks{N}) where {T,N} = new{T,N}(value, arrsize, chunks)
+  chunks::C
+  function ChunkedFillArray{T,N}(value, arrsize, chunksize::NTuple{N, Int}) where {T,N}
+    chunks = GridChunks(arrsize, chunksize)  
+    new{T,N, typeof(chunks)}(value, arrsize, chunks)
+  end
+  ChunkedFillArray{T,N}(value, arrsize, chunks::GridChunks{N}) where {T,N} = new{T,N, typeof(chunks)}(value, arrsize, chunks)
 end
 
 ChunkedFillArray(value::T, arrsize::NTuple{N, Int}, chunksize::NTuple{N,Int}) where {T,N} = ChunkedFillArray{T,N}(value, arrsize, GridChunks(arrsize, chunksize))

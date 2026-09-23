@@ -38,7 +38,6 @@ function DiskArrays.writeblock!(a::_DiskArray,v,i::AbstractUnitRange...)
 end
 
 include("diskstack.jl")
-include("interpolate.jl")
 include("cfdiskarray.jl")
 include("concatdiskarray.jl")
 include("chunkedfillarray.jl")

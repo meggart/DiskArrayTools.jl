@@ -2,7 +2,6 @@ module DiskArrayTools
 import DiskArrays: AbstractDiskArray, eachchunk, haschunks, Chunked,Unchunked,
 estimate_chunksize, GridChunks, readblock!, writeblock!, 
 RegularChunks, IrregularChunks, ChunkVector, approx_chunksize, chunktype_from_chunksizes
-using Interpolations
 using IterTools: imap
 using Base.Iterators: product
 using OffsetArrays: OffsetArray
@@ -82,73 +81,6 @@ function readblock!(a::ResampledDiskArray, aout, i::AbstractUnitRange...)
   atemp = a.a[rr...]
   atemp2 = OffsetArray(atemp,map(r->(first(r)-1),rr))
   resample_disk(a,aout,atemp2,parentranges)
-end
-
-
-
-struct InterpolatedDiskArray{T,N,A<:AbstractArray{T,N},I,O,BC,CS<:Union{Nothing,GridChunks{N}}} <: ResampledDiskArray{T,N}
-    a::A
-    newinds::I
-    meth::O
-    bc::BC
-    chunksize::CS
-end
-fixin(i,s) = max(1,min(s,i))
-function round_readinds(s,r,an)
-  mi,ma = extrema(r)
-  if mi == ma
-    m = fixin(round(Int,mi),s)
-    m:m
-  else
-    a = if an
-      (round(Int,mi,RoundNearestTiesUp), -round(Int,-ma,RoundNearestTiesUp))
-    else
-      (floor(Int,mi),ceil(Int,ma))
-    end
-    fixin(a[1],s):fixin(a[2],s)
-  end
-end
-
-function get_readinds(a::InterpolatedDiskArray,r)
-  allnearest = all(i->isa(i,Union{Nothing,BSpline{<:Constant}}),a.meth)
-  round_readinds.(size(a.a),r,allnearest)
-end
-
-allmeths(order::Tuple,newinds) = map(order,newinds) do o,ni
-    ni === nothing ? NoInterp() : BSpline(o)
-end
-function allmeths(order, newinds)
-    allorders = map(newinds) do _
-        order
-    end
-    allmeths(allorders,newinds)
-end
-function InterpolatedDiskArray(a::AbstractArray,chunksize,newinds...; order=Linear(), bc=Flat())
-    eltype(a) <: Union{Missing,Real,Complex} || error("Can only interpolate real or complex values")
-    s = size(a)
-    ni2 = map((s,i)->i===nothing ? (1:s) : i,s,newinds)
-    me = allmeths(order,newinds)
-    InterpolatedDiskArray(a,ni2,me,bc,chunksize)
-end
-Base.size(a::InterpolatedDiskArray) = map(length,a.newinds)
-haschunks(a::InterpolatedDiskArray{<:Any,<:Any,<:Any,<:Any,<:Any,<:Any,<:GridChunks}) = Chunked()
-haschunks(a::InterpolatedDiskArray{<:Any,<:Any,<:Any,<:Any,<:Any,<:Any,Nothing}) = Unchunked()
-eachchunk(a::InterpolatedDiskArray{<:Any,<:Any,<:Any,<:Any,<:Any,<:Any,<:GridChunks}) = a.chunksize
-
-function resample_disk(a::InterpolatedDiskArray,aout,atemp,parentranges)
-  meth = map((s,m)->s==1 ? NoInterp() : m,size(atemp),a.meth)
-  if all(isequal(NoInterp()),meth)
-      aout .= atemp.parent
-  else
-      fremap(aout,atemp,parentranges,meth,bc=a.bc)
-  end
-end
-
-function fremap(xout,xin,newinds,ipmeth;bc = Flat())
-  interp = extrapolate(interpolate(xin, ipmeth), bc)
-  for (i,ic) in enumerate(Iterators.product(newinds...))
-    xout[i]=interp(ic...)
-  end
 end
 
 function aggregate_chunks(cs,agg)
